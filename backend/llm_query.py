@@ -9,7 +9,7 @@ import requests
 import pandas as pd
 from typing import Any
 
-OLLAMA_URL = "http://172.20.20.35/api/generate"  # ← Fixed: your Ollama host
+OLLAMA_URL = "http://172.20.20.35/api/chat"  # ← Fixed: your Ollama host
 DEFAULT_MODEL = "llama3.2:3b"                           # ← Fixed: your model name
 
 SYSTEM_PROMPT = """You are a SOC (Security Operations Center) data analyst assistant.
