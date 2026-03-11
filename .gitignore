@@ -1,0 +1,74 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# ── Secrets & Env ─────────────────────────────────────────────────────────────
+.env
+.env.*
+*.secret
+secrets.json
+
+# ── Data files (dont commit real incident data) ────────────────────────────────
+# Keep sample_incidents.xlsx but ignore any real uploads
+uploads/
+*.xlsx
+!sample_data/sample_incidents.xlsx
+*.xls
+!sample_data/sample_incidents.xlsx
+*.csv
+!sample_data/*.csv
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── Node (if ever needed) ─────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# ── Temp ─────────────────────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.bak

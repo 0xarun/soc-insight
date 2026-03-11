@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SOC Insight – Security Operations Dashboard</title>
+<meta name="description" content="SOC Metrics SaaS platform for security operations teams. Analyze MTTD, MTTR, severity, analyst performance from Excel incident data.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡</text></svg>">
+<link rel="stylesheet" href="/static/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ══════════════════ UPLOAD MODAL ══════════════════ -->
+<div class="upload-overlay" id="upload-overlay">
+  <div class="upload-modal">
+    <div style="font-size:48px;margin-bottom:12px">🛡</div>
+    <h2>SOC Insight</h2>
+    <p>Upload your incident Excel file to begin analysing SOC metrics, performance trends, and operational KPIs.</p>
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">📊</div>
+      <div class="drop-text">Drop your Excel file here</div>
+      <div class="drop-sub">or click to browse &nbsp;·&nbsp; Supports .xlsx .xls .csv</div>
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
+    </div>
+
+    <div class="upload-progress" id="upload-progress">
+      <div class="spinner"></div>
+      <div style="flex:1">
+        <div id="upload-status-text" style="font-size:12px;margin-bottom:4px">Parsing Excel file…</div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      </div>
+    </div>
+
+    <div id="upload-error" style="color:var(--red);font-size:12px;margin-bottom:12px;display:none"></div>
+
+    <div style="font-size:11px;color:var(--text-dim);margin-top:8px">
+      Expected columns: INC Number · Date · Analyst · Alert · Severity · Occurrence Time · Detection Time · MTTD · MTTR
+      <br>Missing columns are handled automatically.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ APP SHELL ══════════════════ -->
+<div class="app" id="app" style="display:none">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon">🛡</div>
+        SOC Insight
+      </div>
+      <div class="tagline">Security Operations Platform</div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Analytics</div>
+      <div class="nav-item active" data-tab="dashboard">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" data-tab="monthly">
+        <span class="nav-icon">📅</span> Monthly View
+      </div>
+      <div class="nav-item" data-tab="analyst">
+        <span class="nav-icon">👤</span> Analyst Performance
+      </div>
+      <div class="nav-item" data-tab="tpanalysis">
+        <span class="nav-icon">✅</span> True Positives
+      </div>
+      <div class="nav-item" data-tab="sla">
+        <span class="nav-icon">⏱</span> SLA Compliance
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Data</div>
+      <div class="nav-item" data-tab="rawdata">
+        <span class="nav-icon">📋</span> Raw Data
+      </div>
+      <div class="nav-item" data-tab="chat">
+        <span class="nav-icon">💬</span> AI Chat
+        <span class="nav-badge" id="ollama-badge">AI</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Reports</div>
+      <div class="nav-item" data-tab="report">
+        <span class="nav-icon">📄</span> Generate Report
+      </div>
+    </div>
+
+    <div class="sidebar-status">
+      <div class="status-row">
+        <div class="status-dot" id="server-dot"></div>
+        <span id="server-status">Server connected</span>
+      </div>
+      <div class="status-row">
+        <div class="status-dot offline" id="ollama-dot"></div>
+        <span id="ollama-status">Ollama checking…</span>
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:var(--text-dim)" id="session-info"></div>
+    </div>
+  </nav>
+
+  <!-- ── Main ───────────────────────────────────────────────────────────── -->
+  <div class="main">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <h1 id="page-title">Dashboard <span id="page-sub"></span></h1>
+      <div class="search-bar" id="global-search-wrap" style="display:none">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="global-search" placeholder="Search incidents…">
+      </div>
+      <button class="btn btn-secondary btn-sm" id="export-btn">⬇ Export Excel</button>
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('upload-overlay').style.display='flex'; resetUpload()">📤 New File</button>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filterbar" id="filterbar">
+      <div class="filter-group">
+        <span class="filter-label">Month</span>
+        <select class="filter-select" id="filter-month"><option value="All">All Months</option></select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Year</span>
+        <select class="filter-select" id="filter-year"><option value="All">All Years</option></select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Severity</span>
+        <select class="filter-select" id="filter-severity">
+          <option value="All">All Severities</option>
+          <option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Analyst</span>
+        <select class="filter-select" id="filter-analyst"><option value="All">All Analysts</option></select>
+      </div>
+      <div class="filterbar-spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="reset-filters">✕ Reset</button>
+      <button class="btn btn-primary btn-sm" id="apply-filters">Apply</button>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- ───────── DASHBOARD TAB ───────── -->
+      <div class="tab-panel active" id="tab-dashboard">
+
+        <!-- KPI Row -->
+        <div class="kpi-grid" id="kpi-grid">
+          <div class="kpi-card blue">
+            <div class="kpi-label">Total Alerts</div>
+            <div class="kpi-value" id="kpi-total">—</div>
+            <div class="kpi-icon">📈</div>
+          </div>
+          <div class="kpi-card red">
+            <div class="kpi-label">Critical Alerts</div>
+            <div class="kpi-value" id="kpi-critical">—</div>
+            <div class="kpi-icon">🚨</div>
+          </div>
+          <div class="kpi-card orange">
+            <div class="kpi-label">Avg MTTD</div>
+            <div class="kpi-value mono" id="kpi-mttd">—</div>
+            <div class="kpi-sub">Mean Time to Detect</div>
+            <div class="kpi-icon">🔍</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-label">Avg MTTR</div>
+            <div class="kpi-value mono" id="kpi-mttr">—</div>
+            <div class="kpi-sub">Mean Time to Respond</div>
+            <div class="kpi-icon">⚡</div>
+          </div>
+          <div class="kpi-card green">
+            <div class="kpi-label">True Positives</div>
+            <div class="kpi-value" id="kpi-tp">—</div>
+            <div class="kpi-sub" id="kpi-tp-ratio"></div>
+            <div class="kpi-icon">✅</div>
+          </div>
+          <div class="kpi-card cyan">
+            <div class="kpi-label">Analysts Active</div>
+            <div class="kpi-value" id="kpi-analysts">—</div>
+            <div class="kpi-icon">👥</div>
+          </div>
+        </div>
+
+        <!-- Charts Row 1 -->
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3>🎯 Alerts by Severity</h3>
+            <div class="chart-wrap"><canvas id="chart-severity"></canvas></div>
+          </div>
+          <div class="chart-card wide">
+            <h3>📈 Monthly Alert Trend</h3>
+            <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Charts Row 2 -->
+        <div class="charts-grid">
+          <div class="chart-card wide">
+            <h3>⏱ MTTD &amp; MTTR Trend (avg minutes · hours)</h3>
+            <div class="chart-wrap"><canvas id="chart-time"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>👤 Analyst Workload</h3>
+            <div class="chart-wrap"><canvas id="chart-analyst-bar"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Top Alerts + Severity Table side by side -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">🔥 Top Alert Types</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>#</th><th>Alert</th><th class="num">Count</th></tr></thead>
+                <tbody id="top-alerts-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📊 Severity Breakdown</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Severity</th><th class="num">Alerts</th><th class="num">Avg MTTD</th><th class="num">Avg MTTR</th></tr></thead>
+                <tbody id="severity-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── MONTHLY TAB ───────── -->
+      <div class="tab-panel" id="tab-monthly">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">📅 Monthly Breakdown</span>
+            <span class="card-sub" id="monthly-sub"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th class="num">Total</th>
+                  <th class="num">Critical</th>
+                  <th class="num">High</th>
+                  <th class="num">Medium</th>
+                  <th class="num">Low</th>
+                  <th class="num">Avg MTTD</th>
+                  <th class="num">Avg MTTR</th>
+                </tr>
+              </thead>
+              <tbody id="monthly-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:20px" class="card">
+          <div class="card-header"><span class="card-title">📊 Monthly × Severity Heatmap</span></div>
+          <div class="table-wrap">
+            <table class="data-table" id="monthly-sev-table">
+              <thead><tr><th>Month</th><th>Severity</th><th class="num">Alerts</th><th class="num">Avg MTTD</th><th class="num">Avg MTTR</th></tr></thead>
+              <tbody id="monthly-sev-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── ANALYST TAB ───────── -->
+      <div class="tab-panel" id="tab-analyst">
+        <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:16px;margin-bottom:16px">
+          <div class="card">
+            <div class="card-header"><span class="card-title">📊 Alerts per Analyst</span></div>
+            <div class="chart-wrap" style="height:260px"><canvas id="chart-analyst-full"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">⏱ MTTR per Analyst</span></div>
+            <div class="chart-wrap" style="height:260px"><canvas id="chart-analyst-mttr"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">👤 Analyst Performance</span>
+            <span class="card-sub" id="analyst-count"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Analyst</th>
+                  <th class="num">Alerts</th>
+                  <th class="num">Critical</th>
+                  <th class="num">Avg MTTD</th>
+                  <th class="num">Avg MTTR</th>
+                  <th>Top Alert</th>
+                </tr>
+              </thead>
+              <tbody id="analyst-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── TRUE POSITIVES TAB ───────── -->
+      <div class="tab-panel" id="tab-tpanalysis">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header"><span class="card-title">✅ True Positive Analysis by Severity</span></div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Severity</th><th class="num">True Positives</th><th class="num">Avg MTTD</th><th class="num">Avg MTTR</th></tr></thead>
+              <tbody id="tp-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">📊 True Positive Distribution</span></div>
+          <div class="chart-wrap" style="height:250px"><canvas id="chart-tp"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ───────── SLA TAB ───────── -->
+      <div class="tab-panel" id="tab-sla">
+        <div class="card">
+          <div class="card-header"><span class="card-title">⏱ SLA Compliance (based on MTTR)</span></div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th class="num">Total Alerts</th>
+                  <th class="num">SLA Threshold</th>
+                  <th class="num">Breached</th>
+                  <th class="num">Compliance</th>
+                  <th>Status Bar</th>
+                </tr>
+              </thead>
+              <tbody id="sla-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><span class="card-title">📊 SLA Compliance by Severity</span></div>
+          <div class="chart-wrap" style="height:250px"><canvas id="chart-sla"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ───────── RAW DATA TAB ───────── -->
+      <div class="tab-panel" id="tab-rawdata">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">📋 Raw Incident Data</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div class="search-bar" style="width:220px">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="raw-search" placeholder="Search…">
+              </div>
+              <span class="card-sub" id="raw-count"></span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead id="raw-thead"><tr></tr></thead>
+              <tbody id="raw-tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="raw-pagination"></div>
+        </div>
+      </div>
+
+      <!-- ───────── CHAT TAB ───────── -->
+      <div class="tab-panel" id="tab-chat">
+        <div style="margin-bottom:12px">
+          <div class="section-title">💬 AI Chat – Ask your SOC data</div>
+          <div class="chat-suggestions">
+            <span class="suggestion-chip" data-q="show critical incidents">🔴 Critical incidents</span>
+            <span class="suggestion-chip" data-q="which analyst has the highest average MTTR">📊 Highest MTTR analyst</span>
+            <span class="suggestion-chip" data-q="total alerts by severity">📈 Alerts by severity</span>
+            <span class="suggestion-chip" data-q="top 5 most frequent alert types">🔥 Top alert types</span>
+            <span class="suggestion-chip" data-q="average mttd for high severity incidents">⏱ High severity MTTD</span>
+            <span class="suggestion-chip" data-q="true positive rate">✅ TP Rate</span>
+          </div>
+        </div>
+        <div class="chat-wrap">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-msg bot">
+              <div class="chat-avatar">🤖</div>
+              <div class="chat-bubble">
+                <strong>SOC AI Assistant</strong><br>
+                Hi! I can answer questions about your incident data using natural language.<br><br>
+                Try asking things like:<br>
+                • <em>Show all critical incidents in February</em><br>
+                • <em>Which analyst handled the most alerts?</em><br>
+                • <em>Average MTTD for high severity incidents</em><br>
+                • <em>Top 5 most frequent alert types</em>
+              </div>
+            </div>
+          </div>
+          <div class="chat-input-row">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Ask anything about your SOC data…">
+            <button class="btn btn-primary" id="chat-send">Send ↵</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── REPORT TAB ───────── -->
+      <div class="tab-panel" id="tab-report">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <span class="card-title">📄 SOC Operational Report</span>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary btn-sm" id="gen-report-btn">🔄 Generate Report</button>
+              <button class="btn btn-secondary btn-sm" id="download-report-btn">⬇ Download HTML</button>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted)">Report uses the current filter settings (month, year, severity, analyst).</p>
+        </div>
+        <iframe id="report-frame" src="about:blank" title="SOC Report"></iframe>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/chat.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
