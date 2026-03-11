@@ -14,18 +14,98 @@ from typing import Dict, Any, Tuple
 
 # ─────────────────────────── Column synonyms ────────────────────────────────
 COLUMN_ALIASES = {
-    "inc number": ["inc number","inc no","incident number","incident id","inc_number","incnumber","ticket","ticket id","id"],
-    "date": ["date","incident date","inc date","log date"],
-    "analyst": ["analyst","analyst name","assigned to","owner","handler","responder"],
-    "alert": ["alert","alert name","alert type","alert description","threat","event"],
-    "severity": ["severity","priority","sev","level","criticality"],
-    "action taken": ["action taken","action","response","resolution","remediation"],
-    "occurrence time": ["occurrence time","occurance time","occurred time","event time","start time","occurred at"],
-    "detection time": ["detection time","detected time","detected at","alert time"],
-    "mttd": ["mttd","mean time to detect","time to detect","detection duration"],
-    "mttr": ["mttr","mean time to respond","time to respond","response duration","resolution time"],
-    "result": ["result","incident type","classification","tp/fp","true positive","verdict"],
-    "resolved time": ["resolved time","resolve time","closure time","close time","resolution time"],
+
+    # Incident / Ticket
+    "inc number": [
+        "inc number","inc no","incident number","incident id","incidentnumber",
+        "inc_number","incnumber","ticket","ticket id","id"
+    ],
+
+    # Platform / tool source
+    "platform": [
+        "platform","tool","source platform","siem","system","product"
+    ],
+
+    # Date
+    "date": [
+        "date","incident date","inc date","log date"
+    ],
+
+    # Analyst
+    "analyst": [
+        "analyst","analyst name","analystname",
+        "assigned to","owner","handler","responder"
+    ],
+
+    # Alert
+    "alert": [
+        "alert","alert name","alertname",
+        "alert title","alerttitle",
+        "alert type","alert description",
+        "threat","event"
+    ],
+
+    # Status
+    "status": [
+        "status","incident status","ticket status","case status"
+    ],
+
+    # Alert level
+    "alert level": [
+        "alertlevel","alert level","risk level"
+    ],
+
+    # Severity
+    "severity": [
+        "severity","priority","sev","level","criticality"
+    ],
+
+    # Action taken
+    "action taken": [
+        "action taken","actiontaken",
+        "action","response","resolution","remediation"
+    ],
+
+    # Wazuh vs Alfred comparison column
+    "wazuh_vs_alfred": [
+        "wazuhvsalfred","wazuh vs alfred","tool comparison"
+    ],
+
+    # Result / classification
+    "result": [
+        "result","incident type","classification",
+        "tp/fp","true positive","verdict"
+    ],
+
+    # Occurrence time
+    "occurrence time": [
+        "occurrence time","eventoccurence","event occurrence",
+        "occurance time","occurred time","event time",
+        "start time","occurred at"
+    ],
+
+    # Detection time
+    "detection time": [
+        "detection time","eventdetection","event detection",
+        "detected time","detected at","alert time"
+    ],
+
+    # Resolved time
+    "resolved time": [
+        "resolved time","eventresolve","event resolve",
+        "resolve time","closure time","close time",
+        "resolution time"
+    ],
+
+    # MTTD
+    "mttd": [
+        "mttd","mean time to detect","time to detect","detection duration"
+    ],
+
+    # MTTR
+    "mttr": [
+        "mttr","mean time to respond","time to respond","response duration"
+    ],
 }
 
 
