@@ -245,11 +245,9 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
             .unique()
             .tolist()
         )
-        
         "months_available": sorted(
             months,
             key=lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99
-        ),
         ),
         "years_available": sorted(
             [y for y in df["Year"].unique().tolist() if y != "0"]
