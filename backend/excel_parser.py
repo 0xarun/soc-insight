@@ -237,9 +237,19 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
             "from": valid_dates.min().strftime("%d %b %Y") if not valid_dates.empty else "N/A",
             "to":   valid_dates.max().strftime("%d %b %Y") if not valid_dates.empty else "N/A",
         },
+        months = (
+            df["Month"]
+            .dropna()
+            .astype(str)
+            .loc[lambda x: x != "Unknown"]
+            .unique()
+            .tolist()
+        )
+        
         "months_available": sorted(
-            df[df["Month"] != "Unknown"]["Month"].unique().tolist(),
+            months,
             key=lambda m: MONTH_ORDER.index(m) if m in MONTH_ORDER else 99
+        ),
         ),
         "years_available": sorted(
             [y for y in df["Year"].unique().tolist() if y != "0"]
