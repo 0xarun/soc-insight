@@ -8,28 +8,26 @@ import io
 import re
 import numpy as np
 import pandas as pd
+from dateutil import parser as date_parser
 from typing import Dict, Any, Tuple
 
 
 # ─────────────────────────── Column synonyms ────────────────────────────────
-
 COLUMN_ALIASES = {
     "inc number": ["inc number","inc no","incident number","incident id","inc_number","incnumber","ticket","ticket id","id"],
     "date": ["date","incident date","inc date","log date"],
     "analyst": ["analyst","analyst name","assigned to","owner","handler","responder"],
-    "alert": ["alert","alert name","alert type","alert description","threat","event","alerttitle"],
-    "severity": [
-        "severity","priority","sev","level","criticality",
-        "alertlevel","alert level","risk level"
-    ],
+    "alert": ["alert","alert name","alert type","alert description","threat","event"],
+    "severity": ["severity","priority","sev","level","criticality"],
     "action taken": ["action taken","action","response","resolution","remediation"],
-    "occurrence time": ["occurrence time","occurance time","occurred time","eventoccurence","event occurrence","event time","start time","occurred at"],
-    "detection time": ["detection time","detected time","detected at","alert time","eventdetection"],
-    "resolved time": ["resolved time","resolve time","closure time","close time","eventresolve"],
+    "occurrence time": ["occurrence time","occurance time","occurred time","event time","start time","occurred at"],
+    "detection time": ["detection time","detected time","detected at","alert time"],
     "mttd": ["mttd","mean time to detect","time to detect","detection duration"],
     "mttr": ["mttr","mean time to respond","time to respond","response duration","resolution time"],
     "result": ["result","incident type","classification","tp/fp","true positive","verdict"],
+    "resolved time": ["resolved time","resolve time","closure time","close time","resolution time"],
 }
+
 
 MONTH_ORDER = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
@@ -41,35 +39,18 @@ def _normalise_header(col: str) -> str:
 
 
 def _match_columns(df: pd.DataFrame) -> Dict[str,str]:
-    """Map canonical column names to real dataframe columns (robust matching)."""
-
+    """Map canonical column names to real dataframe columns."""
     norm_cols = {_normalise_header(c):c for c in df.columns}
 
     mapping = {}
-
     for canonical, aliases in COLUMN_ALIASES.items():
-
-        for col_norm, original in norm_cols.items():
-
-            for alias in aliases:
-
-                alias_norm = _normalise_header(alias)
-
-                if (
-                    alias_norm == col_norm
-                    or alias_norm in col_norm
-                    or col_norm in alias_norm
-                ):
-                    mapping[canonical] = original
-                    break
-
-            if canonical in mapping:
+        for alias in aliases:
+            if alias in norm_cols:
+                mapping[canonical] = norm_cols[alias]
                 break
 
     return mapping
 
-
-# ─────────────────────────── Time parsing ────────────────────────────────
 
 def _parse_time_str(val):
 
@@ -79,19 +60,10 @@ def _parse_time_str(val):
     if isinstance(val, pd.Timedelta):
         return val
 
-    # Excel duration float (fraction of day)
-    if isinstance(val, (int,float)):
-
-        try:
-            seconds = float(val) * 86400
-            return pd.Timedelta(seconds=seconds)
-        except:
-            return None
-
     s = str(val).strip()
 
     # HH:MM:SS
-    m = re.match(r"^(\d+):(\d{1,2}):(\d{1,2})$", s)
+    m = re.match(r"^(\d+):(\d{2}):(\d{2})$", s)
     if m:
         return pd.Timedelta(
             hours=int(m.group(1)),
@@ -100,7 +72,7 @@ def _parse_time_str(val):
         )
 
     # HH:MM
-    m = re.match(r"^(\d+):(\d{1,2})$", s)
+    m = re.match(r"^(\d+):(\d{2})$", s)
     if m:
         return pd.Timedelta(
             hours=int(m.group(1)),
@@ -117,12 +89,20 @@ def _parse_time_str(val):
 
 def _parse_datetime_col(series: pd.Series):
 
-    return pd.to_datetime(
-        series,
-        errors="coerce",
-        dayfirst=True,
-        infer_datetime_format=True
-    )
+    def _try(v):
+
+        if pd.isna(v):
+            return pd.NaT
+
+        if isinstance(v, pd.Timestamp):
+            return v
+
+        try:
+            return date_parser.parse(str(v), dayfirst=True)
+        except:
+            return pd.NaT
+
+    return series.map(_try)
 
 
 def _timedelta_to_str(td):
@@ -156,45 +136,11 @@ def format_seconds(seconds):
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-# ─────────────────────────── Severity normalization ─────────────────────────
-
-def _normalize_severity(v):
-
-    if pd.isna(v):
-        return "Unknown"
-
-    s = str(v).strip().lower()
-
-    mapping = {
-
-        "critical":"Critical",
-        "crit":"Critical",
-        "c":"Critical",
-
-        "high":"High",
-        "h":"High",
-
-        "medium":"Medium",
-        "med":"Medium",
-        "m":"Medium",
-
-        "low":"Low",
-        "l":"Low",
-
-        "informational":"Informational",
-        "info":"Informational",
-        "inf":"Informational"
-    }
-
-    return mapping.get(s, s.capitalize())
-
-
 # ─────────────────────────── Main Parser ────────────────────────────────
 
 def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[str,Any]]:
 
     # ───────── Read file ─────────
-
     try:
 
         buf = io.BytesIO(file_bytes)
@@ -207,8 +153,8 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
 
             raw = None
 
+            # choose first sheet with data
             for sheet in xl.sheet_names:
-
                 tmp = xl.parse(sheet, dtype=str)
 
                 if not tmp.dropna(how="all").empty:
@@ -222,7 +168,7 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
         raise ValueError(f"Cannot read file: {e}")
 
 
-    # ───────── Clean dataframe ─────────
+    # ───────── Clean raw dataframe ─────────
 
     raw.dropna(how="all", inplace=True)
     raw.dropna(axis=1, how="all", inplace=True)
@@ -254,7 +200,7 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
     ]
 
 
-    # ───────── Date ─────────
+    # ───────── Date column ─────────
 
     date_col = _get("date")
 
@@ -265,7 +211,7 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
         df["Date"] = _parse_datetime_col(occ) if occ is not None else pd.NaT
 
 
-    # ───────── Basic fields ─────────
+    # ───────── Simple columns ─────────
 
     for canon, dest in [
         ("analyst","Analyst"),
@@ -287,7 +233,18 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
     sev = _get("severity")
 
     if sev is not None:
-        df["Severity"] = sev.map(_normalize_severity)
+
+        df["Severity"] = sev.fillna("Unknown").astype(str).str.strip().str.capitalize()
+
+        df["Severity"] = df["Severity"].replace({
+            "Crit":"Critical",
+            "Hi":"High",
+            "Med":"Medium",
+            "Lo":"Low",
+            "Inf":"Informational",
+            "Info":"Informational"
+        })
+
     else:
         df["Severity"] = "Unknown"
 
@@ -354,22 +311,34 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
     df["MTTD_seconds"] = df["MTTD_td"].apply(lambda x: x.total_seconds() if pd.notna(x) else np.nan)
     df["MTTR_seconds"] = df["MTTR_td"].apply(lambda x: x.total_seconds() if pd.notna(x) else np.nan)
 
-    df["MTTD_seconds"] = pd.to_numeric(df["MTTD_seconds"], errors="coerce")
-    df["MTTR_seconds"] = pd.to_numeric(df["MTTR_seconds"], errors="coerce")
-
 
     # ───────── Date breakdown ─────────
 
-    df["Month"] = df["Date"].dt.strftime("%b").fillna("Unknown")
-    df["Year"] = df["Date"].dt.year.fillna(0).astype(int).astype(str)
+    df["Month"] = df["Date"].apply(lambda x: x.strftime("%b") if pd.notna(x) else "Unknown")
+    df["Year"] = df["Date"].apply(lambda x: str(x.year) if pd.notna(x) else "0")
 
 
-    # ───────── Metadata ─────────
+    # ───────── Metadata (safe sorting) ─────────
 
     valid_dates = df["Date"].dropna()
 
-    months = df["Month"].loc[df["Month"] != "Unknown"].unique().tolist()
-    years = df["Year"].loc[df["Year"] != "0"].unique().tolist()
+    months = (
+        df["Month"]
+        .dropna()
+        .astype(str)
+        .loc[lambda x: x != "Unknown"]
+        .unique()
+        .tolist()
+    )
+
+    years = (
+        df["Year"]
+        .dropna()
+        .astype(str)
+        .loc[lambda x: x != "0"]
+        .unique()
+        .tolist()
+    )
 
     metadata = {
 
@@ -389,9 +358,13 @@ def parse_excel(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, Dict[st
 
         "years_available": sorted(years),
 
-        "analysts": sorted(df["Analyst"].dropna().astype(str).unique().tolist()),
+        "analysts": sorted(
+            df["Analyst"].dropna().astype(str).unique().tolist()
+        ),
 
-        "severities": sorted(df["Severity"].dropna().astype(str).unique().tolist()),
+        "severities": sorted(
+            df["Severity"].dropna().astype(str).unique().tolist()
+        ),
 
         "has_result_column": df["Result"].nunique() > 1,
 
