@@ -9,8 +9,8 @@ import requests
 import pandas as pd
 from typing import Any
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "llama3"  # Change to your model name, e.g. "llama3.2:3b"
+OLLAMA_URL = "http://172.20.20.35:11434/api/generate"  # ← Fixed: your Ollama host
+DEFAULT_MODEL = "llama3.2:3b"                           # ← Fixed: your model name
 
 SYSTEM_PROMPT = """You are a SOC (Security Operations Center) data analyst assistant.
 
@@ -65,7 +65,7 @@ def _call_ollama(prompt: str, model: str = DEFAULT_MODEL) -> str:
     """Call local Ollama API and return the generated text."""
     try:
         resp = requests.post(
-            OLLAMA_URL,
+            OLLAMA_URL,                                         # ← Uses module-level constant
             json={"model": model, "prompt": prompt, "stream": False},
             timeout=60,
         )
@@ -74,7 +74,8 @@ def _call_ollama(prompt: str, model: str = DEFAULT_MODEL) -> str:
         return data.get("response", "").strip()
     except requests.exceptions.ConnectionError:
         raise RuntimeError(
-            "Ollama is not running. Please start Ollama with: `ollama serve`"
+            f"Cannot connect to Ollama at {OLLAMA_URL}. "
+            "Check that Ollama is running and the host/port is reachable."
         )
     except requests.exceptions.Timeout:
         raise RuntimeError("Ollama took too long to respond. Try a smaller model.")
@@ -185,7 +186,9 @@ def query(user_question: str, df: pd.DataFrame, model: str = DEFAULT_MODEL) -> d
 def get_ollama_status(model: str = DEFAULT_MODEL) -> dict:
     """Check if Ollama is reachable and model is available."""
     try:
-        resp = requests.get("http://localhost:11434/api/tags", timeout=5)
+        # ← Fixed: derive base URL from OLLAMA_URL instead of hardcoding localhost
+        base_url = OLLAMA_URL.rsplit("/api/", 1)[0]
+        resp = requests.get(f"{base_url}/api/tags", timeout=5)
         resp.raise_for_status()
         models = [m["name"] for m in resp.json().get("models", [])]
         return {
@@ -193,5 +196,5 @@ def get_ollama_status(model: str = DEFAULT_MODEL) -> dict:
             "model_available": any(model in m for m in models),
             "available_models": models,
         }
-    except Exception:
-        return {"connected": False, "model_available": False, "available_models": []}
+    except Exception as e:
+        return {"connected": False, "model_available": False, "available_models": [], "error": str(e)}
